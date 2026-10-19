@@ -127,13 +127,57 @@ implements ComponentNamespaceInterface Lets the bundle inject the namespace
 make:sdc-component UI:Alert            Scaffold a component directory
 ```
 
+## Project Structure
+
+Group by role, and nest each page's private parts **inside that page's directory**. Depth states ownership:
+
+```text
+src_component/
+├── UI/                        Generic: Button, Badge, LocaleSwitcher
+├── Layout/                    Furniture: TopBar, Footer
+└── Page/
+    └── Homepage/
+        ├── Homepage.php       the page component
+        ├── Homepage.html.twig where the page is composed
+        ├── Homepage.css
+        ├── HomepageAction.php the route, co-located
+        ├── HomepageAction.html.twig
+        ├── Hero/              private to Homepage
+        ├── Projects/
+        └── CTA/
+```
+
+A component lives inside the component that owns it. `Hero` exists only for `Homepage`, so it sits in `Page/Homepage/Hero/`; the moment a second page needs it, it moves up to `Page/`, `UI/` or `Layout/`. Deleting `Page/Homepage/` deletes the route, the page, its sections, their markup, styles and behaviour in one `rm -r`.
+
+See [patterns.md](references/patterns.md) for the full convention and its trade-offs.
+
 ## Creating a Component
 
 ```bash
 php bin/console make:sdc-component UI:Alert
 ```
 
-Creates `<ux_components_dir>/UI/Alert/` with `Alert.php`, `Alert.html.twig`, `Alert.css`, and optionally `Alert_controller.js` (`--stimulus`) and a routed `AlertAction.php` + `AlertAction.html.twig` (`--action`). `:` and `/` both work as separators. In non-interactive mode neither the Stimulus controller nor the Action is generated unless the flag is passed.
+Creates `<ux_components_dir>/UI/Alert/` with `Alert.php`, `Alert.html.twig`, `Alert.css`, and optionally `Alert_controller.js` (`--stimulus`). `:` and `/` both work as separators, and every segment before the last becomes a directory and a namespace level — to any depth, which is what makes page-local nesting practical:
+
+```bash
+php bin/console make:sdc-component Page:Homepage:Hero   # -> Page/Homepage/Hero/
+```
+
+In non-interactive mode neither the Stimulus controller nor the Action is generated unless the flag is passed.
+
+### Routed pages: `--action`
+
+```bash
+php bin/console make:sdc-component Page:Homepage --action
+```
+
+Adds `HomepageAction.php` (an `AbstractController` with a `#[Route]`) and `HomepageAction.html.twig` (extends the layout, renders `<twig:Page:Homepage:Homepage />`) to the component's own directory. The controller only routes; all logic and markup stay in the component. Then generate the page's sections with `Page:Homepage:Hero` and compose them inside `Homepage.html.twig`.
+
+Three things the generator leaves for you:
+
+- The route is hardcoded `#[Route('/en', name: 'app.<lowercased name>')]` — edit it.
+- The wrapper extends `layout.html.twig` with a `content` block, not Flex's `base.html.twig` / `body`.
+- Routes in `src_component/` are registered through autoconfiguration, which needs `controllers: { resource: routing.controllers }` in `config/routes.yaml` (Symfony 7.4+). On older setups add an explicit routing resource — see [gotchas.md](references/gotchas.md).
 
 By hand:
 
@@ -165,6 +209,33 @@ class Alert
 }
 ```
 
+## Component Attributes
+
+Use **exactly one** component attribute per class. Each registers the component on its own; stacking two fails the container with *"another component already has this name"*.
+
+| Need | Attribute |
+|---|---|
+| Static component with explicit asset paths | `#[AsSdcComponent(css: 'x.css', js: 'x.js')]` |
+| Static component, co-located files only | `#[AsSdcComponent]` (or plain `#[AsTwigComponent]`) |
+| Reactive component | `#[AsLiveComponent]` |
+| Any extra asset, alongside any of the above | `#[Asset(path: ...)]` — repeatable, registers nothing |
+
+`#[AsSdcComponent]` extends `#[AsTwigComponent]`, and `#[AsLiveComponent]` does too. Symfony's attribute autoconfiguration walks up the attribute's class hierarchy, so each of them is tagged `twig.component` by itself — **no companion attribute is needed or allowed**:
+
+```php
+#[AsSdcComponent]                        // ✅ registered
+class Alert {}
+
+#[AsLiveComponent]                       // ✅ registered, and SDC discovery applies
+#[Asset(path: 'styles/search.css')]      //    #[Asset] composes freely
+class Search {}
+
+#[AsSdcComponent] #[AsLiveComponent]     // ❌ LogicException at container build
+class Broken {}
+```
+
+Template mapping and asset auto-discovery follow the class's **file location**, not which component attribute it carries — so a plain `#[AsLiveComponent]` inside `ux_components_dir` gets both for free.
+
 ## Naming
 
 The component name is the FQCN with the `component_namespace` prefix stripped and `\` replaced by `:`:
@@ -173,6 +244,7 @@ The component name is the FQCN with the `component_namespace` prefix stripped an
 |---|---|---|
 | `App\Component\UI\Alert\Alert` | `<twig:UI:Alert:Alert />` | `UI--Alert--Alert` |
 | `App\Component\Layout\TopBar\TopBar` | `<twig:Layout:TopBar:TopBar />` | `Layout--TopBar--TopBar` |
+| `App\Component\Page\Homepage\Hero\Hero` | `<twig:Page:Homepage:Hero:Hero />` | `Page--Homepage--Hero--Hero` |
 
 The repeated leaf (`Alert:Alert`) is the price of one-directory-per-component. Shorten the tag with an explicit name — template and asset discovery are driven by file location, not by the name, so this is safe:
 

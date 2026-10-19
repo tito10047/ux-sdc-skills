@@ -9,7 +9,8 @@ Give your coding agent accurate knowledge of how SDC components are discovered, 
 | Area | Contents |
 |---|---|
 | Setup | `ux_components_dir` ↔ `component_namespace` PSR-4 pairing, the `render_component_assets()` placeholder, the required `stimulus.yaml`, excluding templates from the public asset map |
-| Conventions | Directory layout, component name derivation (`App\Component\UI\Alert\Alert` → `<twig:UI:Alert:Alert />`), exact-filename auto-discovery |
+| Conventions | `UI/` / `Layout/` / `Page/` layout with page-local nesting, component name derivation (`App\Component\UI\Alert\Alert` → `<twig:UI:Alert:Alert />`), exact-filename auto-discovery |
+| Page workflow | `make:sdc-component Page:Homepage --action`, co-located controllers, nested sections, and the routing config that makes it work |
 | Assets | `#[AsSdcComponent(css:, js:)]`, repeatable `#[Asset]`, priority, HTML attributes, `AssetRegistry` dedup, `Link: preload` headers |
 | Stimulus | The `Stimulus` trait + `ComponentNamespaceInterface`, `{{ controller }}`, targets/actions/values, and the outlet property-name mangling workaround |
 | Live Components | `X-SDC-Assets-CSS` / `X-SDC-Assets-JS`, the `sdc_loader_controller`, deferred components |

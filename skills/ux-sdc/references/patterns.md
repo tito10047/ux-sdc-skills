@@ -6,24 +6,31 @@ Real-world structures for an SDC codebase.
 
 ## Recommended Project Structure
 
-Group components by role, not by type. Four top-level buckets cover almost everything:
+Group by role, and **nest each page's private parts inside that page's directory**. Three top-level buckets, with depth used to express ownership:
 
 ```text
 src_component/
-├── UI/                  Generic, reusable, no domain knowledge
+├── UI/                           Generic, reusable, no domain knowledge
 │   ├── Button/
-│   ├── Spinner/
-│   └── Tabs/
-├── Layout/              Structural page furniture
+│   ├── Badge/
+│   └── LocaleSwitcher/
+├── Layout/                       Structural page furniture
 │   ├── TopBar/
-│   ├── Footer/
-│   └── FlashMessage/
-├── Component/           Reusable feature blocks with domain knowledge
-│   ├── ProductCard/
-│   └── CartSummary/
-└── Page/                Whole pages, one per route
+│   └── Footer/
+└── Page/                         One directory per page
     ├── Homepage/
-    └── Checkout/
+    │   ├── Homepage.php          the page component
+    │   ├── Homepage.html.twig
+    │   ├── Homepage.css
+    │   ├── HomepageAction.php    the route, co-located
+    │   ├── HomepageAction.html.twig
+    │   ├── Hero/                 private to Homepage
+    │   ├── Projects/
+    │   └── CTA/
+    └── Contact/
+        ├── Contact.php
+        ├── ContactAction.php
+        └── Form/
 ```
 
 ```yaml
@@ -36,78 +43,149 @@ ux_sdc:
 { "autoload": { "psr-4": { "App\\": "src/", "App\\Component\\": "src_component/" } } }
 ```
 
-Tags follow directly: `<twig:UI:Button:Button />`, `<twig:Layout:TopBar:TopBar />`, `<twig:Page:Homepage:Homepage />`.
+The nesting rule is the whole point: **a component lives inside the component that owns it.** `Hero` exists only for `Homepage`, so it sits in `Page/Homepage/Hero/`. The moment a second page needs it, it moves up — to `Page/` if two pages share it, to `UI/` or `Layout/` if it has become generic. Directory depth is a readable statement about reuse, and "where does this belong" has one answer instead of a judgement call.
 
-The payoff is that a page's CSS budget is the sum of what it actually rendered. Deleting `src_component/Component/CartSummary/` deletes the feature — class, markup, styles, behaviour — with no dangling references in a global stylesheet.
+Names follow the directory path, since the component name is the FQCN minus `component_namespace` with `\` → `:`:
+
+| Directory | Class | Tag |
+|---|---|---|
+| `UI/Button/` | `App\Component\UI\Button\Button` | `<twig:UI:Button:Button />` |
+| `Layout/TopBar/` | `App\Component\Layout\TopBar\TopBar` | `<twig:Layout:TopBar:TopBar />` |
+| `Page/Homepage/` | `App\Component\Page\Homepage\Homepage` | `<twig:Page:Homepage:Homepage />` |
+| `Page/Homepage/Hero/` | `App\Component\Page\Homepage\Hero\Hero` | `<twig:Page:Homepage:Hero:Hero />` |
+
+Two consequences worth accepting up front:
+
+- **Tags get long.** `<twig:Page:Homepage:Hero:Hero />` is verbose, but it is only ever written once — inside `Homepage.html.twig`, next to the directory it names. Shorten a frequently used `UI/` component with an explicit name (`#[AsSdcComponent('Button')]`) rather than flattening the structure.
+- **Stimulus controller names get long too** — `Page--Homepage--Hero--Hero`. Always generate them from `{{ controller }}`, never by hand, and see the outlet gotcha below.
+
+The payoff is deletion: removing `Page/Homepage/` removes the route, the page, its three sections, their markup, styles and behaviour, in one `rm -r`, with nothing left behind in a global stylesheet or a routing file.
+
+Add a flat `Component/` bucket only if feature blocks are genuinely shared by several pages and belong to neither `UI/` nor `Layout/`; with page-local nesting most projects never need it.
 
 ---
 
-## Page Component with a Co-located Action
+## Building a Page: the `--action` Workflow
 
-The strongest structural move SDC enables: put the Symfony controller **inside** the page component directory. The controller only routes and renders a thin wrapper; all logic and markup stay in the component.
+This is the core loop of an SDC codebase. The Symfony controller lives **inside** the page component's directory; it only routes and renders a thin wrapper, while every piece of logic and markup stays in components.
+
+### Step 1 — scaffold the page and its route
 
 ```bash
-php bin/console make:sdc-component Page:Checkout --action
+php bin/console make:sdc-component Page:Homepage --action
 ```
+
+`--action` adds two files to the usual four:
 
 ```text
-src_component/Page/Checkout/
-├── Checkout.php              # the component: logic + props
-├── Checkout.html.twig        # the markup
-├── Checkout.css
-├── CheckoutAction.php        # the route
-└── CheckoutAction.html.twig  # extends layout, renders <twig:Page:Checkout:Checkout />
+src_component/Page/Homepage/
+├── Homepage.php                # the page component
+├── Homepage.html.twig          # where the page is composed
+├── Homepage.css
+├── Homepage_controller.js      # with --stimulus
+├── HomepageAction.php          # the route
+└── HomepageAction.html.twig    # extends the layout, renders the component
 ```
 
+The generated action, verbatim apart from formatting:
+
 ```php
-// src_component/Page/Checkout/CheckoutAction.php
-namespace App\Component\Page\Checkout;
+// src_component/Page/Homepage/HomepageAction.php
+namespace App\Component\Page\Homepage;
 
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
-class CheckoutAction extends AbstractController
+class HomepageAction extends AbstractController
 {
-    #[Route('/checkout', name: 'app.checkout')]
-    public function index(): Response
+    #[Route('/en', name: 'app.homepage')]
+    public function index(): \Symfony\Component\HttpFoundation\Response
     {
-        return $this->render('Page/Checkout/CheckoutAction.html.twig');
+        return $this->render('Page/Homepage/HomepageAction.html.twig');
     }
 }
 ```
 
 ```twig
-{# src_component/Page/Checkout/CheckoutAction.html.twig #}
-{% extends 'base.html.twig' %}
+{# src_component/Page/Homepage/HomepageAction.html.twig #}
+{% extends 'layout.html.twig' %}
 
-{% block body %}
-    <twig:Page:Checkout:Checkout />
+{% block content %}
+    <twig:Page:Homepage:Homepage />
 {% endblock %}
 ```
 
-```php
-// src_component/Page/Checkout/Checkout.php
-namespace App\Component\Page\Checkout;
+**Two things to fix immediately after generating.** The route path is hardcoded `/en` with name `app.<lowercased name>` — change it. And the wrapper extends `layout.html.twig` expecting a `content` block, while Symfony Flex ships `base.html.twig` with a `body` block; either create `templates/layout.html.twig` once as your project convention, or adjust the two lines per page.
 
-use App\Repository\CartRepository;
+The `render()` path works because the bundle registers `ux_components_dir` as an unnamed Twig path, so `Page/Homepage/HomepageAction.html.twig` resolves straight out of the component tree. The route is registered because `SdcExtension` autoconfigures every class under `ux_components_dir`, which makes `#[Route]` tag the service — see [gotchas.md](gotchas.md) for the Symfony version that requires.
+
+### Step 2 — generate the sections the page is composed of
+
+The maker nests to any depth, so the page's private parts are created straight into its directory:
+
+```bash
+php bin/console make:sdc-component Page:Homepage:Hero
+php bin/console make:sdc-component Page:Homepage:Projects
+php bin/console make:sdc-component Page:Homepage:CTA
+```
+
+```text
+src_component/Page/Homepage/
+├── Homepage.php
+├── Homepage.html.twig
+├── HomepageAction.php
+├── HomepageAction.html.twig
+├── Hero/
+│   ├── Hero.php
+│   ├── Hero.html.twig
+│   └── Hero.css
+├── Projects/
+└── CTA/
+```
+
+### Step 3 — compose them in the page component
+
+```twig
+{# src_component/Page/Homepage/Homepage.html.twig #}
+<div {{ attributes.defaults({ class: 'homepage' }) }}>
+    <twig:Page:Homepage:Hero :headline="headline" />
+
+    <twig:Page:Homepage:Projects :projects="this.featuredProjects" />
+
+    <twig:Page:Homepage:CTA />
+</div>
+```
+
+```php
+// src_component/Page/Homepage/Homepage.php
+namespace App\Component\Page\Homepage;
+
+use App\Repository\ProjectRepository;
 use Tito10047\UX\Sdc\Attribute\AsSdcComponent;
 
 #[AsSdcComponent]
-class Checkout
+class Homepage
 {
+    public string $headline = 'Welcome';
+
     public function __construct(
-        private readonly CartRepository $carts,
+        private readonly ProjectRepository $projects,
     ) {}
 
-    public function getItems(): array
+    public function getFeaturedProjects(): array
     {
-        return $this->carts->currentItems();
+        return $this->projects->findFeatured();
     }
 }
 ```
 
-Keep the action dependency-free and untested; test the component.
+Each section's CSS is injected independently, so the homepage ships exactly `Homepage.css` + `Hero.css` + `Projects.css` + `CTA.css` and nothing else. A section hidden behind a condition that did not run contributes no CSS at all.
+
+### Where the data should live
+
+Fetch in the page component and pass down, as above — the page is the single place that talks to repositories, and `Hero` / `Projects` / `CTA` stay dumb and trivially previewable. Inject a repository into a section only when it owns a genuinely independent concern (a live-updating panel, say).
+
+Keep the `Action` class free of dependencies and untested; test the page component instead. A one-line controller that only picks a template has nothing worth asserting.
 
 ---
 
@@ -303,8 +381,10 @@ The vendor CSS ships only on pages with a date picker. The JS side belongs in `D
 
 ## Live Component as an SDC Component
 
+A Live component nests exactly like a static one — here it is a section of the catalogue page:
+
 ```text
-src_component/Component/ProductSearch/
+src_component/Page/Catalog/ProductSearch/
 ├── ProductSearch.php
 ├── ProductSearch.html.twig
 ├── ProductSearch.css
@@ -312,7 +392,7 @@ src_component/Component/ProductSearch/
 ```
 
 ```php
-namespace App\Component\Component\ProductSearch;
+namespace App\Component\Page\Catalog\ProductSearch;
 
 use App\Repository\ProductRepository;
 use Symfony\UX\LiveComponent\Attribute\AsLiveComponent;
@@ -367,10 +447,10 @@ Note the nested `<twig:UI:ProductCard:ProductCard />`: on the initial page load 
 ## Deferred Live Component
 
 ```twig
-{# CSS arrives with the deferred response, via the loader controller #}
-<twig:Component:Dashboard:Dashboard defer>
+{# in Page/Dashboard/Dashboard.html.twig -- CSS arrives with the deferred response #}
+<twig:Page:Dashboard:Metrics:Metrics defer>
     <twig:UI:Spinner:Spinner />
-</twig:Component:Dashboard:Dashboard>
+</twig:Page:Dashboard:Metrics:Metrics>
 ```
 
 The placeholder is rendered inline on the main response, so `Spinner.css` is in the initial `<head>`; `Dashboard.css` arrives with the deferred fragment's headers. This is the pattern that most visibly breaks without `sdc_loader_controller`.

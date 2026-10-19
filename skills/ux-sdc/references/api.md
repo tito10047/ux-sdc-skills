@@ -24,7 +24,49 @@ class Alert {}
 
 `TARGET_CLASS`, not repeatable. `css` / `js` are added *in addition to* anything auto-discovery finds.
 
-A plain `#[AsTwigComponent]` or `#[AsLiveComponent]` class inside `ux_components_dir` gets the same template mapping and asset discovery — `#[AsSdcComponent]` is only required when you want the `css` / `js` arguments or prefer the explicit marker.
+### Exactly one component attribute per class
+
+A component carries **one** of `#[AsSdcComponent]`, `#[AsTwigComponent]` or `#[AsLiveComponent]` — never two.
+
+`#[AsSdcComponent]` alone is enough to register the component. You do **not** add `#[AsTwigComponent]` next to it: Symfony's `AttributeAutoconfigurationPass::findConfigurators()` walks up the attribute's own class hierarchy, so a subclass of `AsTwigComponent` reuses the parent's autoconfigurator and the service is tagged `twig.component`:
+
+```php
+if (class_exists($attributeName) && $parent = get_parent_class($attributeName)) {
+    return $configurators[$attributeName] = $this->findConfigurators($configurators, $parent);
+}
+```
+
+`#[AsLiveComponent]` alone is likewise enough — it also extends `AsTwigComponent`, so it is tagged `twig.component` too, and SDC template mapping and asset auto-discovery apply to it without any SDC-specific attribute.
+
+Verified by dumping the `twig.component`-tagged services of a booted kernel:
+
+```
+SdcComponent            attrs=[AsSdcComponent]         twig.component=YES
+LiveComponentWithAsset  attrs=[AsLiveComponent,Asset]  twig.component=YES
+```
+
+Stacking two of them **breaks the container**, because each one registers the class as a component:
+
+```php
+#[AsSdcComponent]   // ❌
+#[AsLiveComponent]
+class Stacked {}
+```
+
+```
+LogicException: Failed creating the "...\Stacked" component with the automatic
+name "Stacked": another component already has this name.
+```
+
+So: pick the attribute by what the component needs to *be*.
+
+| Need | Attribute |
+|---|---|
+| Static component, explicit `css:` / `js:` paths | `#[AsSdcComponent(css: ..., js: ...)]` |
+| Static component, co-located files only | `#[AsSdcComponent]` or plain `#[AsTwigComponent]` |
+| Reactive component | `#[AsLiveComponent]` — plus `#[Asset]` for any non-co-located asset |
+
+`#[Asset]` is the one attribute that composes freely: it is repeatable and carries no component registration, so it can sit alongside any of the three.
 
 ---
 
@@ -196,9 +238,60 @@ php bin/console make:sdc-component [name] [--stimulus] [--action]
 | `<Name>Action.php` | `--action` | `AbstractController` with a `#[Route]` |
 | `<Name>Action.html.twig` | `--action` | `{% extends 'layout.html.twig' %}` rendering the component |
 
-Interactive mode asks about Stimulus (default yes) and Action (default no). Non-interactive mode generates neither unless the flag is given. The generated Action routes to `/en` with name `app.<lowercased name>` — adjust it.
+Interactive mode asks about Stimulus (default yes) and Action (default no). Non-interactive mode generates neither unless the flag is given.
 
 Requires `symfony/maker-bundle`.
+
+### Nesting
+
+Every segment before the last becomes a directory and a namespace level, to any depth:
+
+| Command | Directory | Class | Tag |
+|---|---|---|---|
+| `make:sdc-component Alert` | `<dir>/Alert/` | `App\Component\Alert\Alert` | `<twig:Alert:Alert />` |
+| `make:sdc-component UI:Button` | `<dir>/UI/Button/` | `App\Component\UI\Button\Button` | `<twig:UI:Button:Button />` |
+| `make:sdc-component Page:Homepage:Hero` | `<dir>/Page/Homepage/Hero/` | `App\Component\Page\Homepage\Hero\Hero` | `<twig:Page:Homepage:Hero:Hero />` |
+
+This is what makes page-local component nesting practical — generate a page's private sections directly into the page's own directory.
+
+### --action
+
+Adds two files that turn the component into a routed page:
+
+```php
+// <dir>/Page/Homepage/HomepageAction.php
+namespace App\Component\Page\Homepage;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Routing\Attribute\Route;
+
+class HomepageAction extends AbstractController
+{
+    #[Route('/en', name: 'app.homepage')]
+    public function index(): \Symfony\Component\HttpFoundation\Response
+    {
+        return $this->render('Page/Homepage/HomepageAction.html.twig');
+    }
+}
+```
+
+```twig
+{# <dir>/Page/Homepage/HomepageAction.html.twig #}
+{% extends 'layout.html.twig' %}
+
+{% block content %}
+    <twig:Page:Homepage:Homepage />
+{% endblock %}
+```
+
+Details that matter:
+
+- The route is hardcoded `#[Route('/en', name: 'app.<lowercased component name>')]`. Always edit it.
+- The wrapper extends **`layout.html.twig`** and fills a **`content`** block — not Flex's `base.html.twig` / `body`. Provide `templates/layout.html.twig` or change the two lines.
+- The `render()` argument is `<SubPath>/<Name>/<Name>Action.html.twig`, resolvable because `ux_components_dir` is registered as an unnamed Twig path.
+- The rendered tag is the component's full name including every path segment, so the wrapper and the component always agree.
+- The class name is `<Name>Action`, so it is not itself a component — it carries no `AsTwigComponent` attribute and never appears in the SDC metadata.
+- Route registration depends on autoconfiguration, not on a routing resource pointing at the directory. See the routing gotcha.
 
 ---
 

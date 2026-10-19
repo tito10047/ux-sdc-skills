@@ -60,6 +60,39 @@ To avoid the mangling entirely, give the *referenced* controller an all-lowercas
 
 ---
 
+## Two Component Attributes on One Class
+
+Each of `#[AsSdcComponent]`, `#[AsTwigComponent]` and `#[AsLiveComponent]` registers the class as a component on its own. Stacking two makes the container fail at build time:
+
+```php
+#[AsSdcComponent]
+#[AsLiveComponent]
+class Search {}
+```
+
+```
+LogicException: Failed creating the "App\...\Search" component with the automatic
+name "Search": another component already has this name. To fix this, give the
+component an explicit name.
+```
+
+The error text suggests naming the component, which would silence the message while still registering it twice — do not. Remove one attribute.
+
+The temptation is understandable: `#[AsSdcComponent]` carries the `css:` / `js:` arguments and `#[AsLiveComponent]` does not, so stacking looks like the way to get both. It is not — use `#[Asset]`, which is repeatable, registers nothing, and composes with any component attribute:
+
+```php
+#[AsLiveComponent]                            // ✅
+#[Asset(path: 'styles/search.css')]
+class Search {}
+```
+
+Equally, **neither attribute needs a companion**:
+
+- `#[AsSdcComponent]` does not need `#[AsTwigComponent]`. It extends it, and `AttributeAutoconfigurationPass::findConfigurators()` walks up the attribute's class hierarchy, so the parent's autoconfigurator tags the service `twig.component`.
+- `#[AsLiveComponent]` does not need `#[AsSdcComponent]`. It also extends `AsTwigComponent`, and SDC template mapping plus asset auto-discovery are driven by the class's *file location*, not by which component attribute it carries.
+
+---
+
 ## Assets Not Injected
 
 ### Missing render_component_assets()
@@ -233,6 +266,61 @@ Do not create both for the same behaviour, and do not expect `Alert_controller.j
 
 ---
 
+## Routes from `--action` Controllers Are Not Registered
+
+A co-located `HomepageAction.php` lives in `src_component/`, which the standard Flex routing config never scans:
+
+```yaml
+# config/routes.yaml -- the older Flex form
+controllers:
+    resource:
+        path: ../src/Controller/      # src_component/ is invisible here
+        namespace: App\Controller
+    type: attribute
+```
+
+Whether this bites depends on the Symfony version, because there are two separate mechanisms:
+
+**Symfony 7.4+ — works with no routing config.** `AttributeServicesLoader` was added in 7.4, and FrameworkBundle autoconfigures any service whose class or methods carry `#[Route]` with the `routing.controller` tag. `SdcExtension::registerClasses()` registers everything under `ux_components_dir` with `setAutoconfigured(true)`, so the action is tagged and picked up — *provided* `config/routes.yaml` uses the modern form:
+
+```yaml
+controllers:
+    resource: routing.controllers
+```
+
+That resource loads from tagged services and ignores directories entirely, which is why co-located controllers just work on a current Flex skeleton.
+
+**Symfony 6.4 / 7.0–7.3, or an app still on the directory-scanning form — add a resource.** The tag does not exist (or nothing loads it), so declare the component tree explicitly:
+
+```yaml
+# config/routes.yaml
+components:
+    resource:
+        path: '%kernel.project_dir%/src_component/'
+        namespace: App\Component
+    type: attribute
+```
+
+Diagnose with `php bin/console debug:router | grep homepage`. A `--action` page that 404s while the component itself renders fine from another template is always this. The bundle prepends Twig, AssetMapper, TwigComponent and Stimulus config, but never routing — nothing will fix it for you.
+
+---
+
+## The Generated Action Template Does Not Match Your Layout
+
+`make:sdc-component --action` generates:
+
+```twig
+{% extends 'layout.html.twig' %}
+
+{% block content %}
+```
+
+Symfony Flex gives you `templates/base.html.twig` with a `{% block body %}`. Straight out of the maker you therefore get `Unable to find template "layout.html.twig"`, or a page that renders the layout with an empty body because `content` matches no block.
+
+Pick one and stay consistent: either create `templates/layout.html.twig` with a `content` block as the project convention (less editing, since every generated page then works unmodified), or fix the two lines each time. The generated route path `/en` and name `app.<lowercased name>` need editing regardless.
+
+---
+
 ## Dev vs Prod Divergence
 
 ### Stale prod metadata
@@ -354,12 +442,16 @@ php bin/console debug:container --tag=kernel.event_listener | grep Sdc
 # What did the compiler pass actually record? (prod/test only)
 cat var/cache/prod/sdc_metadata.php
 
+# Did a co-located --action controller register its route?
+php bin/console debug:router | grep -i homepage
+
 # Is the container sound after a config change?
 php bin/console lint:container
 ```
 
 | Symptom | First suspect |
 |---|---|
+| `another component already has this name` | Two component attributes stacked on one class |
 | Marker visible in HTML source | Response listener skipped (sub-request, or body rewritten later) |
 | No marker, no `<link>` | `render_component_assets()` not called |
 | Works in dev, not prod | Stale `sdc_metadata.php` → `cache:clear` |
@@ -368,4 +460,6 @@ php bin/console lint:container
 | CSS missing only after a Live update | `sdc_loader_controller` not on `<body>` |
 | `undefined` outlet in a Stimulus controller | Dot access instead of bracket access on the mangled name |
 | Controllers in `assets/controllers/` never fire | Missing `config/packages/stimulus.yaml` |
+| `--action` page 404s | Routes not loaded from `src_component/` |
+| `Unable to find template "layout.html.twig"` | Generated action template expects a `layout.html.twig` with a `content` block |
 | Templates visible under `/assets/` | Missing `excluded_patterns` |
