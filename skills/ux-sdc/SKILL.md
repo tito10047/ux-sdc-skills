@@ -118,13 +118,16 @@ framework:
 ```
 #[AsSdcComponent]                      Register; infers name, template, CSS, JS
 #[AsSdcComponent(css: 'x.css')]        Explicit AssetMapper path, forced type css
-#[Asset(path: 'y.css', priority: 10)]  Repeatable; attach any asset explicitly
+#[AsLiveComponent]                     Reactive; SDC discovery still applies
+                                       ONE component attribute per class -- never stack
+#[Asset(path: 'y.css', priority: 10)]  Repeatable; registers nothing; composes with any
 use Stimulus;                          Adds getController(); needs the interface below
 implements ComponentNamespaceInterface Lets the bundle inject the namespace
 {{ controller }}                       Stimulus controller name, in Twig
 {{ render_component_assets() }}        Placeholder in <head> where assets land
 {{ sdc_loader_controller }}            Global: the bundle's loader controller name
 make:sdc-component UI:Alert            Scaffold a component directory
+make:sdc-component Page:Home --action  Scaffold a page plus its co-located route
 ```
 
 ## Project Structure
@@ -337,7 +340,8 @@ Only outlets are affected; targets, values and actions are fine. See [Gotchas](r
 A LiveComponent in an SDC directory needs no SDC-specific attribute — auto-discovery already sees its files:
 
 ```php
-namespace App\Component\Search\Search;
+// src_component/UI/Search/Search.php
+namespace App\Component\UI\Search;
 
 use Symfony\UX\LiveComponent\Attribute\AsLiveComponent;
 use Symfony\UX\LiveComponent\DefaultActionTrait;
@@ -401,7 +405,9 @@ ux_sdc:
     placeholder: '<!-- __UX_TWIG_COMPONENT_ASSETS__ -->'
 ```
 
-Given `component_namespace`, the bundle prepends config for you: Twig paths for `ux_components_dir` (unnamed and as `@component`), the directory in `framework.asset_mapper.paths`, `twig_component.defaults` with `template_directory: ''`, and the directory in `stimulus.controller_paths`. Do not declare the same namespace again in your own `twig_component.yaml`.
+Given `component_namespace`, the bundle prepends config for you: Twig paths for `ux_components_dir` (unnamed and as `@component`), the directory in `framework.asset_mapper.paths`, `twig_component.defaults` with `template_directory: ''`, and the directory in `stimulus.controller_paths`.
+
+Because it *prepends* rather than appends, two things are on you: do not declare the same namespace again under your own `twig_component.defaults`, and **do** declare `assets/controllers` in `config/packages/stimulus.yaml` — the bundle setting `controller_paths` suppresses StimulusBundle's default for it. Nothing is prepended for routing, so co-located `--action` controllers depend on your `config/routes.yaml`.
 
 ## Key Principles
 
@@ -415,9 +421,9 @@ Given `component_namespace`, the bundle prepends config for you: Twig paths for 
 
 ## References
 
-- **Full API** (attributes, services, events, Twig functions, maker options, config): [references/api.md](references/api.md)
-- **Patterns** (project structure, page components with co-located actions, Live SDC, shared assets, migration): [references/patterns.md](references/patterns.md)
-- **Gotchas** (missing placeholder, filename mismatches, stale prod cache, asset map leakage, Live AJAX): [references/gotchas.md](references/gotchas.md)
+- **Full API** (attributes and why one is enough, services, events, Twig functions, maker and `--action`, config and what the bundle prepends): [references/api.md](references/api.md)
+- **Patterns** (page-nesting convention, the `--action` page workflow, Stimulus outlets, design tokens by priority, Live and deferred components, migration): [references/patterns.md](references/patterns.md)
+- **Gotchas** (stacked attributes, missing placeholder, filename mismatches, unregistered `--action` routes, the lost `assets/controllers` path, outlet name mangling, stale prod cache, asset map leakage, Live AJAX, debugging checklist): [references/gotchas.md](references/gotchas.md)
 
 ## See Also
 

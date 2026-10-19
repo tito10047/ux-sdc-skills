@@ -331,7 +331,8 @@ this.dispatch('next', { prefix: 'calendar', detail: { delta: 1 } });
 Per-component CSS still needs a predictable base. Attach shared files with a high priority so they sort ahead of everything:
 
 ```php
-namespace App\Component\Layout\Shell\Shell;
+// src_component/Layout/Shell/Shell.php
+namespace App\Component\Layout\Shell;
 
 #[AsSdcComponent]
 #[Asset(path: 'styles/reset.css', priority: 1000)]
