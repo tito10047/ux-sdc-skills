@@ -1,0 +1,19 @@
+{
+  "name": "ux-sdc-skills",
+  "owner": {
+    "name": "Jozef Môstka",
+    "url": "https://github.com/tito10047"
+  },
+  "plugins": [
+    {
+      "name": "ux-sdc-skills",
+      "description": "AI agent skill for tito10047/ux-sdc: Single Directory Components for Symfony UX -- one directory per component, automatic template mapping and per-render asset injection.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Jozef Môstka",
+        "url": "https://github.com/tito10047"
+      },
+      "source": "./"
+    }
+  ]
+}

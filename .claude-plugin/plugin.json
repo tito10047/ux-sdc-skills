@@ -1,0 +1,25 @@
+{
+  "name": "ux-sdc-skills",
+  "version": "0.1.0",
+  "description": "AI agent skill for tito10047/ux-sdc: Single Directory Components for Symfony UX -- one directory per component, automatic template mapping and per-render asset injection.",
+  "author": {
+    "name": "Jozef Môstka",
+    "url": "https://github.com/tito10047"
+  },
+  "homepage": "https://github.com/tito10047/ux-sdc-skills",
+  "repository": "https://github.com/tito10047/ux-sdc-skills",
+  "license": "MIT",
+  "keywords": [
+    "symfony",
+    "symfony-bundle",
+    "symfony-ux",
+    "sdc",
+    "single-directory-component",
+    "twig-component",
+    "live-component",
+    "stimulus",
+    "asset-mapper",
+    "ux-sdc",
+    "php"
+  ]
+}

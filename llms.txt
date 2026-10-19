@@ -1,0 +1,10 @@
+# UX SDC Agent Skills
+
+> AI agent skill for tito10047/ux-sdc: Single Directory Components for Symfony UX. One directory per component holding its PHP class, Twig template, CSS and JS; the bundle auto-registers the component, maps the template by file location, and injects only the assets of components actually rendered. Covers ux-sdc 0.4+, Symfony 6.4/7.x/8.x, Symfony UX 2.13+ and 3.x, PHP 8.1+.
+
+## Documentation
+
+- [UX SDC](skills/ux-sdc/SKILL.md): Setup, directory conventions, component naming, asset discovery and injection, Stimulus controller names, Live Component integration, dev vs prod
+- [UX SDC API Reference](skills/ux-sdc/references/api.md): `#[AsSdcComponent]`, `#[Asset]`, `Stimulus` trait, `ComponentNamespaceInterface`, services, events, Twig functions, `make:sdc-component`, full configuration and prepended config
+- [UX SDC Patterns](skills/ux-sdc/references/patterns.md): Project structure (UI/Layout/Component/Page), page components with co-located controller actions, Stimulus controllers and outlets, design tokens by priority, third-party library wrappers, Live and deferred components, migration from classic Twig components
+- [UX SDC Gotchas](skills/ux-sdc/references/gotchas.md): Missing asset placeholder, exact-filename discovery, lost `assets/controllers` Stimulus path, outlet property-name mangling, PSR-4 mismatches, stale production metadata, templates leaking into `public/assets/`, Live AJAX asset headers, debugging checklist
